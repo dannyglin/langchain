@@ -17,7 +17,6 @@ Answer the question based only on the following context:
 Answer the question based on the above context: {question}
 """
 
-
 def main():
     # Create CLI.
     parser = argparse.ArgumentParser()
@@ -26,7 +25,6 @@ def main():
     query_text = args.query_text
     query_rag(query_text)
 
-
 def query_rag(query_text: str):
     # Prepare the DB.
     embedding_function = get_embedding_function()
@@ -34,11 +32,19 @@ def query_rag(query_text: str):
 
     # Search the DB.
     results = db.similarity_search_with_score(query_text, k=5)
+    
+    if not results:
+        print("❌ No results found.")
+        return
+    
+    print(f"🔍 Found {len(results)} results.")
+    for doc, score in results:
+        print(f" - Document: {doc.metadata.get('source', 'unknown')}, Page: {doc.metadata.get('page', 'unknown')}, Score: {score}")
 
     context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt = prompt_template.format(context=context_text, question=query_text)
-    # print(prompt)
+    print(f"📝 Prompt: {prompt}")
 
     model = Ollama(model="mistral")
     response_text = model.invoke(prompt)
@@ -47,7 +53,6 @@ def query_rag(query_text: str):
     formatted_response = f"Response: {response_text}\nSources: {sources}"
     print(formatted_response)
     return response_text
-
 
 if __name__ == "__main__":
     main()
