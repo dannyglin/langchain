@@ -1,17 +1,18 @@
+# populate_database.py
+
 import argparse
 import os
 import shutil
-from langchain.document_loaders.pdf import PyPDFDirectoryLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders.pdf import PyPDFDirectoryLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.schema.document import Document
 from get_embedding_function import get_embedding_function
-from langchain.vectorstores.chroma import Chroma
+from langchain_community.vectorstores.chroma import Chroma
 
 CHROMA_PATH = "chroma"
 DATA_PATH = "data"
 
 def main():
-    # Check if the database should be cleared (using the --clear flag).
     parser = argparse.ArgumentParser()
     parser.add_argument("--reset", action="store_true", help="Reset the database.")
     args = parser.parse_args()
@@ -19,37 +20,17 @@ def main():
         print("✨ Clearing Database")
         clear_database()
 
-    # Create (or update) the data store.
     documents = load_documents()
-    if documents:
-        chunks = split_documents(documents)
-        add_to_chroma(chunks)
-    else:
-        print("❌ No documents loaded, skipping database update.")
+    chunks = split_documents(documents)
+    add_to_chroma(chunks)
 
 def load_documents():
-    print(f"📂 Checking directory: {DATA_PATH}")
-    if not os.path.exists(DATA_PATH):
-        print(f"❌ Directory does not exist: {DATA_PATH}")
-        return []
-    
-    if not os.listdir(DATA_PATH):
-        print(f"⚠️ Directory is empty: {DATA_PATH}")
-        return []
-
     document_loader = PyPDFDirectoryLoader(DATA_PATH)
-    try:
-        documents = document_loader.load()
-        if not documents:
-            print("⚠️ No documents found in the data directory.")
-        else:
-            print(f"📄 Loaded {len(documents)} documents from the data directory.")
-            for doc in documents:
-                print(f" - {doc.metadata['source']}")
-        return documents
-    except Exception as e:
-        print(f"❌ Error loading documents: {e}")
-        return []
+    documents = document_loader.load()
+    print(f"📄 Loaded {len(documents)} documents.")
+    for doc in documents:
+        print(f" - Document: {doc.metadata['source']}, Pages: {len(doc.page_content)}")
+    return documents
 
 def split_documents(documents: list[Document]):
     text_splitter = RecursiveCharacterTextSplitter(
@@ -89,33 +70,29 @@ def add_to_chroma(chunks: list[Document]):
         new_chunk_ids = [chunk.metadata["id"] for chunk in new_chunks]
         db.add_documents(new_chunks, ids=new_chunk_ids)
         db.persist()
+
+        # Verify that the documents have been added.
+        existing_items = db.get(include=[])
+        existing_ids = set(existing_items["ids"])
+        print(f"Number of documents in DB after addition: {len(existing_ids)}")
     else:
         print("✅ No new documents to add")
 
+
 def calculate_chunk_ids(chunks):
-    # This will create IDs like "data/Danny_Lin_Resume:6:2"
-    # Page Source : Page Number : Chunk Index
     last_page_id = None
     current_chunk_index = 0
-
     for chunk in chunks:
         source = chunk.metadata.get("source")
         page = chunk.metadata.get("page")
         current_page_id = f"{source}:{page}"
-
-        # If the page ID is the same as the last one, increment the index.
         if current_page_id == last_page_id:
             current_chunk_index += 1
         else:
             current_chunk_index = 0
-
-        # Calculate the chunk ID.
         chunk_id = f"{current_page_id}:{current_chunk_index}"
         last_page_id = current_page_id
-
-        # Add it to the page meta-data.
         chunk.metadata["id"] = chunk_id
-
     return chunks
 
 def clear_database():
